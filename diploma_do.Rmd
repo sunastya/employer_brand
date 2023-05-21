@@ -1,0 +1,586 @@
+---
+title: "diploma"
+author: "Павлова Настя"
+date: '2023-05-15'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readr)
+library(tidyverse)
+library(ggplot2)
+library(stringr)
+library(ggplot2)
+library(GGally)
+#install.packages("Hmisc")
+library("Hmisc")
+#install.packages("sjmisc")
+library(sjmisc)
+#install.packages("lavaan", dependencies = TRUE)
+library(lavaan)
+#install.packages("lavaanPlot")
+library(lavaanPlot)
+
+```
+
+```{r}
+
+# import the data directly from s3 bucket
+data <- read.csv("~/mine/diploma_dataset_fin.csv")
+
+# Print the data
+head(data)
+
+data$assets_2021 = as.numeric(sub(",", ".", data$assets_2021))
+data$assets_2022 = as.numeric(sub(",", ".", data$assets_2022))
+#data$revenue_2021 = as.numeric(sub(",", ".", data$revenue_2021))
+#data$revenue_2022 = as.numeric(sub(",", ".", data$revenue_2022))
+#data$net_inc_2021 = as.numeric(sub(",", ".", data$net_inc_2021))
+data$net_inc_2022 = as.numeric(sub(",", ".", data$net_inc_2022))
+#data$liab_2022 = as.numeric(sub(",", ".", data$liab_2022))
+#data$equity_2022 = as.numeric(sub(",", ".", data$equity_2022))
+
+#data$leverage_AE = as.numeric(sub(",", ".", data$leverage_AE))
+#data$leverage_DE = as.numeric(sub(",", ".", data$leverage_DE))
+
+
+
+data$average_time = as.numeric(sub(",", ".", data$average_time))
+#data$average_time_2 = as.numeric(sub(",", ".", data$average_time_2))
+data$recr_eff = as.numeric(sub(",", ".", data$recr_eff))
+#data$recr_eff_2 = as.numeric(sub(",", ".", data$recr_eff_2))
+
+data$roa = sub(",", ".", data$roa)
+data$brand_strength = sub(",", ".", data$brand_strength)
+data$roa = as.numeric(sub("%", "", data$roa, fixed = TRUE))/100
+data$brand_strength = as.numeric(sub("%", "", data$brand_strength, fixed = TRUE))/100
+#data$awareness = as.numeric(sub("%", "", data$awareness, fixed = TRUE))/100
+
+#data$rev = ((data$revenue_2022 - data$revenue_2021)/data$revenue_2021)
+#data$inc = ((data$net_inc_2022 - data$net_inc_2021)/data$net_inc_2021)
+
+
+```
+
+
+```{r}
+str(data)
+
+data_fin = data %>% select(company, brand_strength, recr_eff, roa) 
+
+
+descr(data_fin,
+  #headings = FALSE, # remove headings
+  #stats = "common" # most common descriptive statistics
+)
+?summary
+
+#dfSummary(data_fin)
+summary(data_fin)
+
+
+#ggplot(data_fin) + geom_boxplot(aes(x=brand_strength)) + 
+    #scale_fill_manual(values=c("#69b3a2", "grey")) +
+    #theme(legend.position = "none") +
+    #xlab("")
+
+ggplot(data_fin, aes(y=brand_strength)) + 
+    geom_boxplot(alpha=0.3, width=0.7, fill = "bisque3") +
+    theme(legend.position="none") + theme_classic()
+
+```
+
+```{r}
+#recruitment
+ggplot(data_fin, aes(y=recr_eff)) + 
+    geom_boxplot(alpha=0.3, width=0.7, fill = "bisque3") +
+    theme(legend.position="none") + theme_classic()
+
+
+
+#Calculate Q, Q3 and IQR
+
+Q1 <- quantile(data_fin$recr_eff, .25)
+
+Q3 <- quantile(data_fin$recr_eff, .75)
+
+IQR <- IQR(data_fin$recr_eff)
+
+#Remove rows that have values outside of 1.5*IQR of Q1 and Q3
+
+outliers_recr <- filter(data_fin, data_fin$recr_eff <= (Q1 - 1.5*IQR) | data_fin$recr_eff >= (Q3 + 1.5*IQR))
+outliers_recr
+
+
+new_data <- subset(data_fin, data_fin$recr_eff < 0.2)
+
+#77 obs are left
+#recruitment updated
+ggplot(new_data, aes(y=recr_eff)) + 
+    geom_boxplot(alpha=0.3, width=0.7, fill = "bisque3") +
+    theme(legend.position="none") + theme_classic()
+```
+
+
+```{r}
+#finance
+
+
+
+#Calculate Q, Q3 and IQR
+
+
+new_data <- na.omit(new_data)
+
+#69 obs
+
+ggplot(new_data, aes(y=roa)) + 
+    geom_boxplot(alpha=0.3, width=0.7, fill = "bisque3") +
+    theme(legend.position="none") + theme_classic()
+
+Q1 <- quantile(new_data$roa, .25)
+
+Q3 <- quantile(new_data$roa, .75)
+
+IQR <- IQR(new_data$roa)
+
+#Remove rows that have values outside of 1.5*IQR of Q1 and Q3
+
+outliers_roa <- filter(new_data, new_data$roa <= (Q1 - 1.5*IQR) | new_data$roa >= (Q3 + 1.5*IQR))
+outliers_roa
+
+
+new_data <- subset(new_data, new_data$roa > -0.9 & new_data$roa < 0.9)
+
+#66 obs are left
+
+#finance updated
+ggplot(new_data, aes(y=roa)) + 
+    geom_boxplot(alpha=0.3, width=0.7, fill = "bisque3") +
+    theme(legend.position="none") + theme_classic()
+
+
+
+#data_scaled = new_data %>% select(-company)
+#data_scaled = scale(data_scaled)
+#summary(data_scaled)
+
+
+
+#data_scaled %>% cor()
+
+#p = cor(data_11)
+#p
+```
+
+
+```{r}
+specmod = "
+
+# Path c' (direct effect)
+roa ~ c*brand_strength
+
+# Path a
+recr_eff ~ a*brand_strength
+
+# Path b
+roa ~ b*recr_eff
+
+# Indirect effect (a*b): Sobel Test (Delta Method)
+ab := a*b
+"
+
+# Fit/estimate the model
+fitmod = sem(specmod, data = new_data)
+
+
+# Summarize the results/output
+summary(fitmod, fit.measures = TRUE, rsquare = TRUE, standardize = TRUE)
+
+#varTable(fitmod)
+```
+
+```{r}
+set.seed(555)
+# Fit/estimate the model
+fitmod_boot = sem(specmod, data = new_data, se = "bootstrap", bootstrap = 1000)
+
+parameterEstimates(fitmod_boot, ci = TRUE, level = 0.95, boot.ci.type = "perc")
+
+
+# Summarize the results/output
+summary(fitmod_boot, fit.measures = TRUE, rsquare = TRUE, standardize = TRUE)
+lavaanPlot(model = fitmod, coefs = TRUE) 
+#semPaths(fitmod_boot, 'std', layout = 'circle')
+
+```
+
+### Алгоритм k-means
+
+
+Посмотрим на потенциальные закономерности
+
+```{r}
+data_cl = new_data %>% select(-company, -vac_numb)
+data_cl = scale(data_cl)
+#data <- na.omit(new_data)
+
+#ggpairs(data5, progress = F)
+```
+Но как узнать число кластеров?
+
+```{r}
+k.max <- 15
+wss <- sapply(1:k.max, 
+              function(k){kmeans(data_cl, k, nstart=10)$tot.withinss})
+wss
+```
+
+```{r}
+ggplot(data.frame(k = 1:length(wss), wss=wss)) + geom_path(aes(x = k, y = wss)) + scale_x_continuous(breaks = 1:k.max) + theme_classic()
+```
+
+"Метод локтя" - выбирается такое число кластеров, где происходит перегиб, уменьшение ошибки становится более плавным. Например, 8-10
+
+```{r}
+set.seed(3732)
+km.out_8 = kmeans(data_cl, 8, nstart=10)
+km.out_8
+```
+
+В результатах есть много всего полезного:
+
+* clusters -- к какому наблюдению отнесено каждое наблюдение
+* centers -- средние значения по всем переменным (внимание: по нормировнны значениям, лучше пересчитываать на исходных данных)
+* totss -- общая ошибка (сумма расстояний между всеми точками)
+* withinss -- разброс в кластерах (сумма расстояний внутри каждого кластера)
+* tot.withinss -- сумма разброза по всем кластерам
+* betweenss -- сумма расстояний между кластерами
+* size - размеры кластеров
+
+Чем больше between_SS / total_SS -- тем лучше разбиение.
+
+Пробуем 9 кластеров
+
+```{r}
+set.seed(3732)
+km.out_9 = kmeans(data_cl, 9, nstart=10)
+km.out_9
+```
+
+Пробуем 10 кластеров
+
+```{r}
+set.seed(3732)
+km.out_10 = kmeans(data_cl, 10, nstart=10)
+km.out_10
+```
+
+Пробуем 11 кластеров
+
+```{r}
+set.seed(3732)
+km.out_11 = kmeans(data_cl, 11, nstart=10)
+km.out_11
+```
+
+Посмотрим на результат в исходных переменных
+
+```{r}
+new_data$clusters11 = factor(km.out_11$cluster)
+
+
+centers_11 = new_data %>% group_by(clusters11) %>% 
+  summarise(brand = mean(brand_strength),
+            recr = mean(recr_eff),
+            fin = mean(roa),
+            count = n())
+centers_11
+```
+```{r}
+ggplot(new_data) + geom_point(aes(x=brand_strength, y=roa, 
+                               color=factor(clusters11), 
+                               size=recr_eff)) + 
+                  theme_classic() + scale_color_brewer(palette="Paired")
+```
+
+
+
+############
+
+```{r}
+specmod3 = "
+# Path c' (direct effect)
+brand_strength ~ c*roa
+
+# Path a
+brand_strength ~ a*recr_eff
+
+# Path b
+recr_eff ~ b*roa
+
+# Indirect effect (a*b): Sobel Test (Delta Method)
+ab := a*b
+"
+
+# Fit/estimate the model
+fitmod3 = sem(specmod3, data = data2)
+
+
+# Summarize the results/output
+summary(fitmod3, fit.measures = TRUE, rsquare = TRUE)
+```
+
+```{r}
+
+set.seed(777)
+# Fit/estimate the model
+fitmod4 = sem(specmod3, data = data2, se = "bootstrap", bootstrap = 2000)
+
+parameterEstimates(fitmod4, ci = TRUE, level = 0.95, boot.ci.type = "perc")
+```
+
+```{r}
+specmod5 = "
+
+fin =~ roa + inc
+
+
+# Path c' (direct effect)
+brand_strength ~ c*fin
+
+# Path a
+brand_strength ~ a*recr_eff
+
+# Path b
+recr_eff ~ b*fin
+
+# Indirect effect (a*b): Sobel Test (Delta Method)
+ab := a*b
+"
+
+# Fit/estimate the model
+fitmod5 = sem(specmod5, data = data2)
+
+
+# Summarize the results/output
+summary(fitmod5, fit.measures = TRUE, rsquare = TRUE)
+
+varTable(fitmod5)
+```
+
+
+### Алгоритм k-means
+
+
+Посмотрим на потенциальные закономерности
+
+```{r}
+data5 = data %>% select(-id, - company, -rev)
+data6 <- na.omit(data5)
+library(ggplot2)
+library(GGally)
+
+install.packages("Hmisc")
+library("Hmisc")
+
+mydata.rcorr = rcorr(as.matrix(data6))
+mydata.rcorr
+
+#ggpairs(data5, progress = F)
+
+data1 = data %>% select(brand_strength, recr_eff, roa) %>% na.omit()
+```
+Equity -- assets_21 (0.97)
+equity -- assets_2022 (0.96)
+revenue -- net_inc
+
+Мы видим явную закономерность между CustomerID и AnnualIncome, что не несет дополнительного смысла, а просто показывает порядок внесения в базу. Удалим id
+
+Не забываем про нормирование. (Зачем, кстати?)
+
+```{r}
+?ggpairs
+scaled <- scale(data1)
+set.seed(3732)
+km.out = kmeans(scaled, 3, nstart=10)
+km.out
+```
+
+В результатах есть много всего полезного:
+
+* clusters -- к какому наблюдению отнесено каждое наблюдение
+* centers -- средние значения по всем переменным (внимание: по нормировнны значениям, лучше пересчитываать на исходных данных)
+* totss -- общая ошибка (сумма расстояний между всеми точками)
+* withinss -- разброс в кластерах (сумма расстояний внутри каждого кластера)
+* tot.withinss -- сумма разброза по всем кластерам
+* betweenss -- сумма расстояний между кластерами
+* size - размеры кластеров
+
+Чем больше between_SS / total_SS -- тем лучше разбиение.
+
+```{r}
+km.out$betweenss/km.out$totss
+```
+
+Посмотрим на результат в исходных переменных
+
+```{r}
+data1$clusters3 = factor(km.out$cluster)
+
+ggpairs(data1, mapping = ggplot2::aes(color = clusters3), 
+        columns = c('brand_strength', 'recr_eff', 'roa'),
+        progress = F)
+
+centers3 = data1 %>%   group_by(clusters3) %>% 
+  summarise(brand = mean(brand_strength),
+            recr = mean(recr_eff),
+            fin = mean(roa))
+```
+
+Попробуем 5 кластеров
+
+```{r}
+set.seed(3732)
+km.out5 = kmeans(scaled, 5, nstart=10)
+km.out5
+```
+
+Лучше, чем предыдущий. 
+```{r}
+data1$clusters5 = factor(km.out5$cluster)
+ggpairs(data1, mapping = ggplot2::aes(color = clusters5), 
+        columns = c('brand_strength', 'recr_eff', 'roa'),
+        progress = F)
+
+centers5 = customers %>%   group_by(clusters5) %>% 
+  summarise(gender = mean(Gender),
+            age = mean(Age),
+            income = mean(AnnualIncome),
+            spending = mean(SpendingScore))
+```
+```{r}
+set.seed(3732)
+km.out5.noG = kmeans(scale(select(customersCut,-Gender)), 5, nstart=10)
+km.out5.noG
+```
+
+```{r}
+customers$clusters5 = factor(km.out5.noG$cluster)
+ggpairs(customers, mapping = ggplot2::aes(color = clusters5), 
+        columns = c("Gender", "Age", "AnnualIncome", "SpendingScore"),
+        progress = F)
+
+centers5 = customers %>%   group_by(clusters5) %>% 
+  summarise(gender = mean(Gender),
+            age = mean(Age),
+            income = mean(AnnualIncome),
+            spending = mean(SpendingScore))
+```
+
+Но как узнать число кластеров?
+
+```{r}
+k.max <- 15
+wss <- sapply(1:k.max, 
+              function(k){kmeans(scaled, k, nstart=10)$tot.withinss})
+wss
+```
+
+```{r}
+ggplot(data.frame(k = 1:length(wss), wss=wss)) + geom_path(aes(x = k, y = wss)) + scale_x_continuous(breaks = 1:k.max)
+```
+
+"Метод локтя" - выбирается такое число кластеров, где происходит перегиб, уменьшение ошибки становится более плавным. Например, 8
+
+```{r}
+set.seed(3732)
+km.out4 = kmeans(scaled, 4, nstart=10)
+km.out4
+data1$clusters4 = factor(km.out4$cluster)
+```
+```{r}
+set.seed(3732)
+km.out6 = kmeans(scaled, 6, nstart=10)
+km.out6
+data1$clusters6 = factor(km.out6$cluster)
+```
+Лучше, чем предыдущий. 
+```{r}
+customers$clusters8 = factor(km.out8$cluster)
+ggpairs(customers, mapping = ggplot2::aes(color = clusters8), 
+        columns = c("Gender", "Age", "AnnualIncome", "SpendingScore"),
+        progress = F)
+
+centers8 = data1 %>%   group_by(clusters5) %>% 
+  summarise(br = mean(brand_strength),
+            rec_eff = mean(recr_eff),
+            fin = mean(roa),
+            cnt = n())
+
+centers8
+```
+
+```{r}
+ggplot(data1)+geom_point(aes(x=brand_strength, y=roa, 
+                               color=factor(clusters6), 
+                               size=recr_eff))
+
+centers6 = data1 %>%   group_by(clusters6) %>% 
+  summarise(brand = mean(brand_strength),
+            recritment = mean(recr_eff),
+            finance = mean(roa),
+            count = n())
+centers6
+
+df = merge(x=data,y=data1,by="roa",all.x=TRUE)
+
+ggplot(df) + geom_point(aes(x=brand_strength.y, y=roa, 
+                               color=factor(clusters6), 
+                               size=recr_eff.y)) + geom_text(aes(label = company), size=1)
+
+df2 = df %>% filter(clusters6 == "3" | clusters6 == "5" | clusters6 == "6")
+```
+
+```{r}
+
+specmod_df = "
+# Path c' (direct effect)
+brand_strength.x ~ c*roa
+
+# Path a
+brand_strength.x ~ a*recr_eff.x
+
+# Path b
+recr_eff.x ~ b*roa
+
+# Indirect effect (a*b): Sobel Test (Delta Method)
+ab := a*b
+"
+
+# Fit/estimate the model
+fitmod_df = sem(specmod_df, data = df2)
+
+
+# Summarize the results/output
+summary(fitmod_df, fit.measures = TRUE, rsquare = TRUE)
+
+#varTable(fitmod)
+```
+
+```{r}
+set.seed(555)
+# Fit/estimate the model
+fitmod_df2 = sem(specmod_df, data = df2, se = "bootstrap", bootstrap = 2000)
+
+parameterEstimates(fitmod_df2, ci = TRUE, level = 0.95, boot.ci.type = "perc")
+
+
+# Summarize the results/output
+summary(fitmod_df2, fit.measures = TRUE, rsquare = TRUE)
+
+```
